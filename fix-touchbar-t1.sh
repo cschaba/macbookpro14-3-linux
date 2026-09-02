@@ -18,6 +18,15 @@
 # keyboard and touchpad right now, and a DKMS build would shadow it from
 # /lib/modules/<kver>/updates/. Only the three iBridge modules are built.
 #
+# LICENSING: this repository is MIT, but the kernel-compat patch block below
+# embeds short excerpts of, and replacements for, code from
+# apple-ibridge.c / apple-ib-tb.c / apple-ib-als.c, which are
+# SPDX-License-Identifier: GPL-2.0, Copyright (c) 2017-2018 Ronald Tschalar.
+# That patch content is therefore offered under GPL-2.0, not MIT. The rest of
+# this script is original work under MIT. No driver source is redistributed
+# here - it is read from the copy already installed on your own machine and
+# patched in a temporary directory at build time.
+#
 # Run as root:
 #   sudo ./fix-touchbar-t1.sh [--verify] [--fork] [--dry-run] [--revert]
 #

@@ -16,11 +16,26 @@
 #   --verify      just report current state and exit
 #   --dry-run     show what would happen, change nothing
 #
-# NOTE ON TRUST: the default source is an *unmerged* Omarchy pull request
-# (basecamp/omarchy#7487), pinned to one commit and checksum-verified. It is
-# third-party RF calibration data, not vendor firmware. Review it before use:
+# LICENSING - READ THIS BEFORE USING THE DEFAULT DOWNLOAD
+#
+# This NVRAM file is **Broadcom-proprietary**. It originates from Apple's
+# Windows (Boot Camp) driver package, and that is precisely why it is NOT in
+# linux-firmware: nobody has established the right to redistribute it.
+#
+# This script does not ship the file. By default it downloads a copy from an
+# *unmerged* Omarchy pull request (basecamp/omarchy#7487), pinned to one commit
+# and checksum-verified. That PR's author flagged the licensing question openly
+# and left the decision to the maintainers; at the time of writing it is still
+# open, so treat that copy as convenience, not as a licensed distribution.
 #   https://github.com/basecamp/omarchy/pull/7487
-# If you would rather supply your own copy, pass --file.
+#
+# Using this calibration data on a Mac you own - hardware Apple shipped it for -
+# is a very different act from redistributing it. If you want to stay clear of
+# the third-party copy entirely, extract the file from your own machine's Boot
+# Camp driver package or macOS install and pass it with --file. That route
+# involves no third-party redistribution at all.
+#
+# Do not commit the resulting file to a public repository.
 
 set -euo pipefail
 

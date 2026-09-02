@@ -183,9 +183,57 @@ Standing on other people's work:
 - [t2linux.org](https://t2linux.org) — for T2 machines. Not this one, but the
   best reference for its own hardware.
 
-## Licence
+## Licensing, and what this repo does *not* ship
 
-MIT — see [LICENSE](LICENSE).
+**No firmware, binaries or third-party source are distributed here.** Every file
+in this repository is text that was written for it. Everything else is fetched
+or read on your machine at run time.
 
-The scripts are original work. `fix-touchbar-t1.sh` patches GPL-2.0 kernel
-driver sources at build time on your own machine; it does not redistribute them.
+### The scripts — MIT
+
+[LICENSE](LICENSE) covers the original work. One carve-out: the kernel-compat
+patch block inside `fix-touchbar-t1.sh` embeds short excerpts of and
+replacements for `apple-ibridge.c` / `apple-ib-tb.c` / `apple-ib-als.c`, which
+are `SPDX-License-Identifier: GPL-2.0`, © 2017–2018 Ronald Tschalär. **That
+patch content is offered under GPL-2.0**, not MIT, and is noted as such in the
+script header. It reads the driver source already installed on your machine and
+patches a temporary copy; nothing is redistributed.
+
+### The Wi-Fi NVRAM — proprietary, and not ours to give you
+
+The BCM43602 NVRAM file is **Broadcom-proprietary**, originating from Apple's
+Windows (Boot Camp) driver package. That is exactly why it is absent from
+`linux-firmware`: nobody has established a right to redistribute it.
+
+`fix-wifi-nvram.sh` does not contain it. By default it downloads a copy from an
+*unmerged* pull request ([basecamp/omarchy#7487](https://github.com/basecamp/omarchy/pull/7487)),
+pinned to a single commit and checksum-verified. That PR's author raised the
+licensing question openly and left the call to the maintainers; it was still
+open when this was written. Treat that copy as a convenience, not as a licensed
+distribution.
+
+Using this calibration data on a Mac you own — hardware Apple shipped it for —
+is a different act from redistributing it. If you would rather avoid the
+third-party copy, extract the file from your own Boot Camp driver package or
+macOS install and pass it with `--file`. **Do not commit the resulting file
+anywhere public.**
+
+### The T1 firmware — never share it
+
+`backup-t1-firmware.sh` archives Apple's `combined.memboot` and `FDRData` from
+your own ESP so that *you* can restore *your own* machine. Those files are
+TSS-personalised to a single device's ECID: they are useless on any other Mac,
+they identify yours, and they are Apple's code. `.gitignore` blocks them.
+
+Do not publish them, do not accept them from anyone else, and do not ask for
+them — a copy from another machine cannot work anyway.
+
+### Things this repo only links to
+
+| Project | Licence | How it is used |
+|---|---|---|
+| [roadrunner2/macbook12-spi-driver](https://github.com/roadrunner2/macbook12-spi-driver) | GPL-2.0 | Read from your installed `macbook12-spi-driver-dkms` package |
+| [davidjo/snd_hda_macbookpro](https://github.com/davidjo/snd_hda_macbookpro) | GPL-2.0 | Cloned at run time by the audio script (or via AUR) |
+| [F13-Kr1pt0n/macbook-pro-touchbar-driver](https://github.com/F13-Kr1pt0n/macbook-pro-touchbar-driver) | GPL-2.0 | Cloned only when you pass `--fork` |
+
+All three are source-only and carry no binary blobs.
