@@ -95,6 +95,22 @@ report_state() {
   echo "  default sink:        $(pactl get-default-sink 2>/dev/null)"
   echo "  sink volume/mute:    $(pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null | head -1 | sed 's/.*\/ *\([0-9]*%\).*/\1/') / $(pactl get-sink-mute @DEFAULT_SINK@ 2>/dev/null | sed 's/Mute: //')"
   echo "  sources:             $(pactl list sources short 2>/dev/null | awk '!/monitor/{n++} END{print n+0}') non-monitor"
+  # The CS8409's hardware playback stage is NOT driven by PipeWire's slider on
+  # this driver, and it can sit far below 0 dB. That is heard as "audio works
+  # but is very quiet" with a volume control that never gets loud enough.
+  if [[ -n "${cs_card:-}" ]]; then
+    local pcm db
+    pcm=$(amixer -c "$cs_card" sget PCM 2>/dev/null | tail -2 | head -1 | sed 's/.*Playback //')
+    if [[ -n "$pcm" ]]; then
+      echo "  hardware PCM gain:   $pcm"
+      db=$(printf '%s' "$pcm" | sed -n 's/.*\[\(-\?[0-9.]*\)dB\].*/\1/p')
+      if [[ -n "$db" ]] && awk -v d="$db" 'BEGIN{exit !(d < -20)}'; then
+        echo "                       ^ well below 0 dB - this is why it sounds quiet."
+        echo "                         raise it:  amixer -c $cs_card sset PCM 90%"
+        echo "                         persist:   sudo alsactl store"
+      fi
+    fi
+  fi
   echo "  pinned profile file: $( [[ -f ~/.local/state/wireplumber/default-profile ]] && cat ~/.local/state/wireplumber/default-profile | tr '\n' ' ' || echo '<none>' )"
 }
 
@@ -193,7 +209,12 @@ echo "You should see Master / Speaker / Headphone controls appear. If the card i
 echo "still on a surround profile:"
 echo "  pactl set-card-profile alsa_card.pci-0000_00_1f.3 output:analog-stereo+input:analog-stereo"
 echo
-echo "The headset-mic capture switch ships off; enable it if you use one:"
+echo "If sound works but is far too quiet, the hardware gain stage is the cause, not
+a limiter. PipeWire's slider does not drive it on this driver:
+  amixer -c 1 sset PCM 90%     # then find the highest level that stays clean
+  sudo alsactl store           # persist across reboots
+
+The headset-mic capture switch ships off; enable it if you use one:"
 echo "  amixer -c 0 sset 'Mic' cap"
 echo
 echo "WARNING from upstream: raw ALSA devices (hw:0,0 / plughw:0,0) have NO volume"

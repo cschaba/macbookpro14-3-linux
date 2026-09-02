@@ -193,6 +193,10 @@ Documented in full in [RUNBOOK.md](RUNBOOK.md); the short version:
 - **`disable_while_typing` only suppresses touches that *begin* while typing.**
   A palm already resting keeps tracking. It is not a substitute for palm
   rejection.
+- **Audio can work but be far too quiet, and it is not a limiter.** The
+  CS8409's hardware playback stage can sit at −36 dB, and PipeWire's slider
+  does not drive it — so the desktop control tops out on an already-crushed
+  signal. Raise `amixer -c 1 sset PCM` and `alsactl store` it.
 - **This touchpad reports no pressure axis**, so every `AttrPalmPressureThreshold`
   recipe online is a no-op. Only touch *size* works.
 

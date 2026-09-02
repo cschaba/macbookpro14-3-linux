@@ -559,6 +559,44 @@ named `AppleT2x2/x4/x6`, and this card is `HDA-Intel` / `PCH` on the ACP path.
 
 ---
 
+### Third gotcha: the hardware gain stage is not the volume slider
+
+Symptom: audio works, nothing is muted, the desktop volume control goes to
+100% — and it is still far too quiet. It reads like a limiter. It is not.
+
+```bash
+amixer -c 1 sget PCM
+#   75 [29%] [-36.00dB]      <- hardware playback stage, near the bottom
+pactl get-sink-volume @DEFAULT_SINK@
+#   85% / -4.24 dB           <- what the desktop thinks
+```
+
+**PipeWire's slider does not drive this control on this driver.** Verify it
+yourself — move PipeWire and watch ALSA stay put:
+
+```bash
+pactl set-sink-volume @DEFAULT_SINK@ 60%;  amixer -c 1 sget PCM | grep -o '\[[0-9]*%\]'
+pactl set-sink-volume @DEFAULT_SINK@ 100%; amixer -c 1 sget PCM | grep -o '\[[0-9]*%\]'
+# unchanged at 29% both times
+```
+
+So PipeWire applies software attenuation on top of a hardware stage cutting
+**−36 dB** — roughly 63× in amplitude. No amount of sliding recovers it.
+
+Fix the hardware stage once, then use PipeWire normally:
+
+```bash
+amixer -c 1 sset PCM 90%     # 0 dB is 100%; find the highest that stays clean
+sudo alsactl store           # persist via alsa-restore.service
+```
+
+> Lower PipeWire first. Going from −36 dB to 0 dB is a very large jump, and
+> these are small speakers — full output distorts on bass and is not kind to
+> them. Check headphones separately; that path may want a different level.
+
+`fix-audio-cs8409.sh --verify` reports this gain and flags it when it is below
+−20 dB.
+
 ### Confirmed working state (2026-09-02)
 
 ```
