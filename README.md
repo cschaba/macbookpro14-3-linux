@@ -7,6 +7,12 @@ Scripts plus a long-form [**RUNBOOK**](RUNBOOK.md) that records not just the
 fixes but the evidence behind them, and the dead ends — because several of the
 obvious answers on the internet are wrong for this hardware.
 
+> [!WARNING]
+> **These scripts run as root and change how your system boots, loads drivers
+> and talks to hardware. Back up your data first, and read
+> [Before you run anything](#before-you-run-anything).** They are shared in the
+> hope they are useful, with no warranty of any kind — see [LICENSE](LICENSE).
+
 ---
 
 ## Read this first: your Mac has a T1, not a T2
@@ -84,6 +90,48 @@ If it is gone, [RUNBOOK.md](RUNBOOK.md) documents two recovery routes. The
 non-destructive one — installing macOS to an **external USB SSD** and booting it
 once online — worked here, and repaired the *internal* ESP. That answer was not
 documented anywhere before; most sources assume a full internal reinstall.
+
+---
+
+## Before you run anything
+
+This is a record of fixing **one** machine. It worked there. Your Mac has a
+different history — a different kernel, a different bootloader, packages someone
+installed two years ago — and these scripts touch parts of the system that make
+the difference between booting and not booting.
+
+**Use them at your own risk. There is no warranty, express or implied. If
+something here breaks your system, that is on you to repair.** The MIT licence
+says the same thing in legal language, and it means it.
+
+That is not a reason to avoid them. It is a reason to do four things first:
+
+1. **Back up your data**, to something that is not this disk. Not "the important
+   files" — everything you would mind losing.
+2. **Back up the T1 firmware** if you still have it, with
+   `sudo ./backup-t1-firmware.sh --out ~/backups`, and copy the archive
+   somewhere else. Restoring it needs a working macOS installer and an
+   internet connection; recreating it from nothing is a much longer day.
+3. **Run `--verify` and `--dry-run` first.** Every script supports them, they
+   change nothing, and they tell you what state you are actually in rather than
+   what this README assumes.
+4. **Read the script before running it as root.** They are commented heavily and
+   explain *why* at each step, precisely so you can judge them rather than trust
+   them.
+
+### The parts that can actually hurt
+
+| What | Risk |
+|---|---|
+| `remove-t2-cruft.sh` | Removes packages, potentially including a kernel. It refuses to leave you without one, but verify with `--dry-run` and keep a live USB nearby. |
+| `fix-touchbar-t1.sh` | Loads an out-of-tree driver with a known load deadlock. It installs a systemd unit ordered *after* `multi-user.target` so a bad load costs a dark Touch Bar rather than a hung boot — but it does taint your kernel. |
+| `backup-t1-firmware.sh --restore` | Writes to your EFI System Partition. On this setup that partition is also `/boot`. |
+| The macOS recovery route | Involves an installer that can repartition disks. Erase the *external* target only, and never `disk0`. Get this wrong and you lose the Linux install. |
+| `fix-wifi-nvram.sh` | Reloads `brcmfmac`; you lose network for a few seconds. Do not run it over SSH on the link you are using. |
+| The keyboard debounce recipe | `interception-tools` grabs your only keyboard. Have a USB keyboard plugged in the first time, so a typo in the YAML cannot lock you out. |
+
+Nothing here is irreversible except a wiped partition and a lost firmware
+backup. Those two are worth being careful about; the rest is recoverable.
 
 ---
 
