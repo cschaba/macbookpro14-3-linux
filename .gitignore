@@ -1,0 +1,16 @@
+# NEVER commit T1 firmware. It is TSS-personalised to a single machine's ECID,
+# is useless on any other Mac, and identifies your device.
+t1-firmware-*.tar.gz
+esp-files.tar.gz
+esp-raw.img.gz
+*.memboot
+FDRData
+
+# Local backups the scripts create
+*.bak
+*.bak.*
+*.orig
+
+# Captures and scratch output
+/tmp/
+*.log
