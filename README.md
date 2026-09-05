@@ -228,10 +228,16 @@ writes one digit to the driver's `fnmode` attribute.
 Rules live in `~/.config/touchbar-fnmode.conf` as `<window-class regex> = <mode>`:
 
 ```
-^(Alacritty|kitty|foot)$ = inverted    # F-keys without holding fn
-^(Spotify|mpv|vlc)$      = special     # media transport
-default                  = normal      # macOS behaviour
+default = normal                        # media keys; hold fn for F1-F12
+
+#^(Alacritty|kitty|foot)$ = inverted    # F-keys at rest, fn for media
+#^(Spotify|mpv|vlc)$      = special     # media transport only
 ```
+
+Only `default = normal` is active out of the box: it already gives you F-keys on
+demand via **fn**, and a bar that never changes under you is easier to live with
+than one that does. Uncomment an override to opt in — but note that `special`
+ignores **fn** entirely, so there is no way back to F-keys while it is active.
 
 | mode | digit | what the bar shows |
 |---|---|---|

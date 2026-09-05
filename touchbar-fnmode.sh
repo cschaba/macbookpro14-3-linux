@@ -115,15 +115,22 @@ write_default_config() {
 #
 # First match wins. Find a window's class with:  ./touchbar-fnmode.sh --which
 
-# Terminals and editors: F-keys are worth more than volume here.
-^(Alacritty|com\.mitchellh\.ghostty|kitty|foot|org\.wezfurlong\.wezterm)$ = inverted
-^(neovide|Emacs|jetbrains-.*|code|codium)$                                = inverted
-
-# Media: give the transport controls the whole bar.
-^(Spotify|mpv|vlc|io\.bassi\.Amberol|org\.gnome\.Rhythmbox3)$ = special
-
-# Everything else behaves like macOS.
+# Everything behaves like macOS: media keys on the bar, hold fn for F1-F12.
 default = normal
+
+# Per-app overrides are OFF by default, because "normal" already gives you
+# F-keys on demand via fn and a bar that never changes under you is easier to
+# live with than one that does. Uncomment a line to opt in.
+#
+# Note that "special" ignores fn entirely -- there is no way back to F-keys
+# while it is active.
+
+# Terminals and editors: F-keys at rest, hold fn for media.
+#^(Alacritty|com\.mitchellh\.ghostty|kitty|foot|org\.wezfurlong\.wezterm)$ = inverted
+#^(neovide|Emacs|jetbrains-.*|code|codium)$                                   = inverted
+
+# Media players: transport controls only.
+#^(Spotify|mpv|vlc|io\.bassi\.Amberol|org\.gnome\.Rhythmbox3)$ = special
 EOC
   echo "wrote $CONFIG"
 }
