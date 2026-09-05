@@ -170,7 +170,7 @@ nothing and tells you what state you are actually in.
 | `diagnose-key-chatter.sh` | root | Tell hardware key chatter apart from compositor key-repeat. |
 | `remove-t2-cruft.sh` | root | Remove T2-only packages that do nothing on a T1. |
 | `touchbar-fnmode.sh` | **user** | Swap the Touch Bar between media keys and F-keys. |
-| `fix-gpu-idle-power.sh` | root | Stop the Radeon holding its voltage rail high at idle (−2.6 W). |
+| `check-gpu-idle-power.sh` | root | Measure the discrete GPU's idle draw, and show why it cannot be tuned. |
 
 `fix-audio-cs8409.sh` must **not** run as root — `yay`/`makepkg` refuse to build
 as root. It calls `sudo` itself where needed.
@@ -284,41 +284,53 @@ app's layout in place.
 
 ---
 
-## The discrete GPU is always on, and it costs you
+## The discrete GPU is always on, and you cannot do anything about it
 
 The internal panel is wired to the Radeon Pro 555 — `eDP-1` lives on the amdgpu
 card, and the Intel iGPU has **no eDP connector at all**. So the discrete GPU can
-never runtime-suspend. It idles at its lowest clock (214 MHz), but amdgpu's
-default `power_dpm_state` of `performance` holds the voltage rail up regardless.
-
-Measured with the GPU otherwise idle:
-
-| setting | sclk | power | temp |
-|---|---|---|---|
-| `auto` + `performance` (default) | 214 MHz | 9.07 W | 46 °C |
-| `power_dpm_state = battery` | 782 MHz | 10.23 W | 47 °C |
-| `power_dpm_state = balanced` | 214 MHz | **7.48 W** | 46 °C |
-| `level = low` | 214 MHz | 7.14 W | 46 °C |
-| `manual` + `POWER_SAVING` | 214 MHz | 7.06 W | 45 °C |
-
-Two things worth knowing. **`battery` is the worst setting on the list** — it
-raised the clock to 782 MHz; do not assume the power-sounding name is the
-low-power one. And the clock was never the problem: baseline and `low` both sit
-at 214 MHz yet differ by 1.9 W. It is the voltage rail.
+never runtime-suspend. It idles at its lowest clock, 214 MHz, and draws about
+**7 W continuously**. That is the floor.
 
 ```bash
-sudo ./fix-gpu-idle-power.sh --measure   # before/after on your machine
-sudo ./fix-gpu-idle-power.sh --install   # apply at every boot
+sudo ./check-gpu-idle-power.sh            # current state and idle draw
+sudo ./check-gpu-idle-power.sh --measure  # A/B a setting, with read-back
 ```
 
-`balanced` is what the script sets, because it leaves
-`power_dpm_force_performance_level` at `auto` so the GPU still ramps up for real
-work. The lower two entries buy another 0.4 W and give that up.
+### `power_dpm_state` does nothing — and lies about it
+
+This is the trap. The write is accepted, exit status 0, no error:
+
+```console
+# echo balanced > /sys/class/drm/card1/device/power_dpm_state
+# cat /sys/class/drm/card1/device/power_dpm_state
+performance
+```
+
+It is a deprecated legacy interface, silently ignored on this chip. Any script
+that sets it and reports success is lying to you — including an earlier version
+of the one in this repo, which is why it is now a measurement tool and not a fix.
+
+**Always read the value back. An accepted write is not an applied write.**
+
+### How the wrong answer got made
+
+A first pass measured five settings, one sample each, and produced a convincing
+table: 9.07 W at the default, 7.48 W at `balanced`, 2.6 W apparently saved.
+
+All of it was noise. The desktop was busy and varying underneath, and the *same*
+setting later read 9.07 W, 10.10 W and 7.06 W at different moments — the spread
+between repeats was larger than the effect being claimed. With the desktop quiet,
+ten consecutive samples read **7.06 W with zero variance, at every setting**.
+
+There was never anything to save. Two rules came out of it:
+
+- average several samples, never trust one
+- read the value back after writing
 
 ### Do not bother trying to move the panel to the Intel GPU
 
-It looks like the obvious fix — it would remove the remaining ~7 W entirely —
-and `vga_switcheroo` is registered, so it looks possible:
+This is the only change that would remove the 7 W, and `vga_switcheroo` is
+registered, so it looks possible:
 
 ```
 0:DIS:+:Pwr:0000:01:00.0     <- Radeon, driving the panel
@@ -334,6 +346,10 @@ rebooting recovers every time — but there is nothing here to find.
 Doing it properly would mean programming gmux before boot (the `apple_set_os`
 EFI trick, or GRUB-level register writes). On a T1 whose firmware you have
 already had to recover once, that is a poor trade for 7 W.
+
+What is left is physical: dust in the fan ducts and eight-year-old thermal paste.
+
+---
 
 ---
 
