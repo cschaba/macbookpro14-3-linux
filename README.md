@@ -170,6 +170,7 @@ nothing and tells you what state you are actually in.
 | `diagnose-key-chatter.sh` | root | Tell hardware key chatter apart from compositor key-repeat. |
 | `remove-t2-cruft.sh` | root | Remove T2-only packages that do nothing on a T1. |
 | `touchbar-fnmode.sh` | **user** | Swap the Touch Bar between media keys and F-keys. |
+| `fix-gpu-idle-power.sh` | root | Stop the Radeon holding its voltage rail high at idle (−2.6 W). |
 
 `fix-audio-cs8409.sh` must **not** run as root — `yay`/`makepkg` refuse to build
 as root. It calls `sudo` itself where needed.
@@ -280,6 +281,59 @@ without switching windows using `./touchbar-fnmode.sh --match <class>`.
 The layout only changes when the new app maps to a different mode, because every
 write wakes the iBridge over USB. Focusing the bare desktop leaves the last
 app's layout in place.
+
+---
+
+## The discrete GPU is always on, and it costs you
+
+The internal panel is wired to the Radeon Pro 555 — `eDP-1` lives on the amdgpu
+card, and the Intel iGPU has **no eDP connector at all**. So the discrete GPU can
+never runtime-suspend. It idles at its lowest clock (214 MHz), but amdgpu's
+default `power_dpm_state` of `performance` holds the voltage rail up regardless.
+
+Measured with the GPU otherwise idle:
+
+| setting | sclk | power | temp |
+|---|---|---|---|
+| `auto` + `performance` (default) | 214 MHz | 9.07 W | 46 °C |
+| `power_dpm_state = battery` | 782 MHz | 10.23 W | 47 °C |
+| `power_dpm_state = balanced` | 214 MHz | **7.48 W** | 46 °C |
+| `level = low` | 214 MHz | 7.14 W | 46 °C |
+| `manual` + `POWER_SAVING` | 214 MHz | 7.06 W | 45 °C |
+
+Two things worth knowing. **`battery` is the worst setting on the list** — it
+raised the clock to 782 MHz; do not assume the power-sounding name is the
+low-power one. And the clock was never the problem: baseline and `low` both sit
+at 214 MHz yet differ by 1.9 W. It is the voltage rail.
+
+```bash
+sudo ./fix-gpu-idle-power.sh --measure   # before/after on your machine
+sudo ./fix-gpu-idle-power.sh --install   # apply at every boot
+```
+
+`balanced` is what the script sets, because it leaves
+`power_dpm_force_performance_level` at `auto` so the GPU still ramps up for real
+work. The lower two entries buy another 0.4 W and give that up.
+
+### Do not bother trying to move the panel to the Intel GPU
+
+It looks like the obvious fix — it would remove the remaining ~7 W entirely —
+and `vga_switcheroo` is registered, so it looks possible:
+
+```
+0:DIS:+:Pwr:0000:01:00.0     <- Radeon, driving the panel
+2:IGD: :Pwr:0000:00:02.0     <- Intel, powered but idle
+```
+
+It is not. Apple's firmware hands the panel to the Radeon before the kernel
+starts, so **i915 never probes an eDP connector**. Switching the mux at runtime
+gives the Intel chip a live panel it has no DRM connector for: black screen,
+confirmed by testing. The mux is not persistent, so holding the power button and
+rebooting recovers every time — but there is nothing here to find.
+
+Doing it properly would mean programming gmux before boot (the `apple_set_os`
+EFI trick, or GRUB-level register writes). On a T1 whose firmware you have
+already had to recover once, that is a poor trade for 7 W.
 
 ---
 
