@@ -169,7 +169,7 @@ nothing and tells you what state you are actually in.
 | `fix-touchpad-quirks.sh` | root | Size-based palm rejection (this touchpad has no pressure axis). |
 | `diagnose-key-chatter.sh` | root | Tell hardware key chatter apart from compositor key-repeat. |
 | `remove-t2-cruft.sh` | root | Remove T2-only packages that do nothing on a T1. |
-| `touchbar-fnmode.sh` | **user** | Switch the Touch Bar layout to follow the focused app. |
+| `touchbar-fnmode.sh` | **user** | Swap the Touch Bar between media keys and F-keys. |
 
 `fix-audio-cs8409.sh` must **not** run as root — `yay`/`makepkg` refuse to build
 as root. It calls `sudo` itself where needed.
@@ -213,19 +213,59 @@ APPLETB_CMD_MODE_ESC / _FN / _SPCL / _OFF     /* 4 layouts   */
 APPLETB_CMD_DISP_ON  / _DIM / _OFF            /* 3 brightness */
 ```
 
-### What you *can* do
+### What you *can* do: swap media keys for F-keys
 
-Pick which of the four layouts is showing, and change it per application. That
-is what `touchbar-fnmode.sh` does — it watches Hyprland's focus events and
-writes one digit to the driver's `fnmode` attribute.
+The bar shows one of two useful things, and `touchbar-fnmode.sh` switches
+between them by writing one digit to the driver's `fnmode` attribute.
+
+| mode | what the bar shows |
+|---|---|
+| `normal` | media keys — brightness, volume, play/pause; hold **fn** for F1–F12 |
+| `inverted` | F1–F12; hold **fn** for media keys |
 
 ```bash
-./touchbar-fnmode.sh --status          # current layout, and where it lives
-./touchbar-fnmode.sh --install-udev    # write access for your user (sudo)
-./touchbar-fnmode.sh --install-service # follow the focused app from now on
+./touchbar-fnmode.sh --install-udev    # once: write access for your user (sudo)
+
+./touchbar-fnmode.sh --set inverted    # F-keys on the bar
+./touchbar-fnmode.sh --set normal      # media keys on the bar (Apple default)
+./touchbar-fnmode.sh --status          # what is set, and where it lives
 ```
 
-Rules live in `~/.config/touchbar-fnmode.conf` as `<window-class regex> = <mode>`:
+`normal` is what the driver starts in, and it is usually the one you want: the
+media keys are there when you glance down, and **fn** gets you F1–F12 whenever
+a terminal app needs them. Switch to `inverted` if you use F-keys constantly
+and would rather hold **fn** for volume.
+
+Two further layouts exist, mostly for completeness:
+
+| mode | digit | what the bar shows |
+|---|---|---|
+| `fkeys` | 0 | F1–F12 only — **fn** does nothing |
+| `special` | 3 | media keys only — **fn** does nothing |
+
+Neither offers a route back to the other set without another `--set`, so reach
+for `normal` or `inverted` unless you have a reason not to.
+
+Note the `fnmode` node's HID suffix (`0003:05AC:8600.0003`) **increments each
+time the iBridge re-enumerates**, which the boot-time handover helper does every
+boot. The script resolves it by glob every time; do not hardcode it.
+
+### Optional: a different layout per application
+
+The script can also watch Hyprland's focus events and switch layout as you move
+between windows — F-keys in a terminal, media keys in a music player.
+
+**This is off by default**, and it is worth understanding why before turning it
+on: `normal` already gives you F-keys on demand via **fn**, so per-app switching
+mostly buys you a bar that changes under you as you alt-tab.
+
+```bash
+./touchbar-fnmode.sh --install-service   # follow the focused window
+./touchbar-fnmode.sh --uninstall-service # stop
+```
+
+Rules live in `~/.config/touchbar-fnmode.conf` as `<window-class regex> = <mode>`,
+first match wins:
 
 ```
 default = normal                        # media keys; hold fn for F1-F12
@@ -234,28 +274,12 @@ default = normal                        # media keys; hold fn for F1-F12
 #^(Spotify|mpv|vlc)$      = special     # media transport only
 ```
 
-Only `default = normal` is active out of the box: it already gives you F-keys on
-demand via **fn**, and a bar that never changes under you is easier to live with
-than one that does. Uncomment an override to opt in — but note that `special`
-ignores **fn** entirely, so there is no way back to F-keys while it is active.
-
-| mode | digit | what the bar shows |
-|---|---|---|
-| `fkeys` | 0 | F1–F12, always |
-| `normal` | 1 | media keys; hold **fn** for F-keys (Apple default) |
-| `inverted` | 2 | F-keys; hold **fn** for media keys |
-| `special` | 3 | media/special keys only |
-
 Find a window's class with `./touchbar-fnmode.sh --which`, and test a rule
 without switching windows using `./touchbar-fnmode.sh --match <class>`.
 
 The layout only changes when the new app maps to a different mode, because every
 write wakes the iBridge over USB. Focusing the bare desktop leaves the last
 app's layout in place.
-
-Note the `fnmode` node's HID suffix (`0003:05AC:8600.0003`) **increments each
-time the iBridge re-enumerates**, which the boot-time handover helper does every
-boot. The script resolves it by glob every time; do not hardcode it.
 
 ---
 
