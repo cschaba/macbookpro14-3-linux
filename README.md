@@ -39,7 +39,9 @@ cat /sys/class/dmi/id/product_name
 `facetimehd-firmware`.
 
 `tiny-dfr` in particular is useless here: it renders onto the `appletbdrm` DRM
-node, which only ever exists on a T2.
+node, which only ever exists on a T2. The same goes for every themed-Touch-Bar
+project built on it — see [What the T1 Touch Bar can and cannot
+do](#what-the-t1-touch-bar-can-and-cannot-do) before you spend an evening on one.
 
 ---
 
@@ -167,9 +169,87 @@ nothing and tells you what state you are actually in.
 | `fix-touchpad-quirks.sh` | root | Size-based palm rejection (this touchpad has no pressure axis). |
 | `diagnose-key-chatter.sh` | root | Tell hardware key chatter apart from compositor key-repeat. |
 | `remove-t2-cruft.sh` | root | Remove T2-only packages that do nothing on a T1. |
+| `touchbar-fnmode.sh` | **user** | Switch the Touch Bar layout to follow the focused app. |
 
 `fix-audio-cs8409.sh` must **not** run as root — `yay`/`makepkg` refuse to build
 as root. It calls `sudo` itself where needed.
+
+---
+
+## What the T1 Touch Bar can and cannot do
+
+People keep finding beautiful Touch Bar projects — themed buttons, ring gauges,
+browser tabs with favicons, sliders, dictation — and asking whether they can be
+ported to a T1. The answer is no, and it is worth knowing exactly why so you can
+recognise the pattern yourself.
+
+Those projects are all content generators for **`tiny-dfr`**, which renders
+pixels to the Touch Bar's DRM device. Two things make that impossible here.
+
+**The T1 has no framebuffer.** The iBridge coprocessor draws the bar *itself*,
+from a fixed set of layouts baked into the firmware. The host only says which
+layout to show. There is no pixel path at all:
+
+```bash
+ls /sys/class/drm/          # card0 (i915), card1 (amdgpu). No Touch Bar node.
+lsusb -d 05ac:8600          # T1 iBridge. appletbdrm binds 05ac:8302 (T2 only).
+grep -ic 'drm\|framebuffer\|pixel' /usr/src/macbook12-spi-driver*/apple-ib-tb.c
+# 0
+```
+
+**The T1 has no digitizer.** It reports key codes, never coordinates, so
+sliders, drag and swipe cannot work even in principle:
+
+```bash
+cat /sys/class/input/event*/device/name        # find "Apple Inc. iBridge"
+cat .../capabilities/abs                       # 0  -- no absolute axes
+```
+
+So the T1's entire Touch Bar API is four layout constants and three brightness
+states, from `apple-ib-tb.c`:
+
+```c
+APPLETB_CMD_MODE_ESC / _FN / _SPCL / _OFF     /* 4 layouts   */
+APPLETB_CMD_DISP_ON  / _DIM / _OFF            /* 3 brightness */
+```
+
+### What you *can* do
+
+Pick which of the four layouts is showing, and change it per application. That
+is what `touchbar-fnmode.sh` does — it watches Hyprland's focus events and
+writes one digit to the driver's `fnmode` attribute.
+
+```bash
+./touchbar-fnmode.sh --status          # current layout, and where it lives
+./touchbar-fnmode.sh --install-udev    # write access for your user (sudo)
+./touchbar-fnmode.sh --install-service # follow the focused app from now on
+```
+
+Rules live in `~/.config/touchbar-fnmode.conf` as `<window-class regex> = <mode>`:
+
+```
+^(Alacritty|kitty|foot)$ = inverted    # F-keys without holding fn
+^(Spotify|mpv|vlc)$      = special     # media transport
+default                  = normal      # macOS behaviour
+```
+
+| mode | digit | what the bar shows |
+|---|---|---|
+| `fkeys` | 0 | F1–F12, always |
+| `normal` | 1 | media keys; hold **fn** for F-keys (Apple default) |
+| `inverted` | 2 | F-keys; hold **fn** for media keys |
+| `special` | 3 | media/special keys only |
+
+Find a window's class with `./touchbar-fnmode.sh --which`, and test a rule
+without switching windows using `./touchbar-fnmode.sh --match <class>`.
+
+The layout only changes when the new app maps to a different mode, because every
+write wakes the iBridge over USB. Focusing the bare desktop leaves the last
+app's layout in place.
+
+Note the `fnmode` node's HID suffix (`0003:05AC:8600.0003`) **increments each
+time the iBridge re-enumerates**, which the boot-time handover helper does every
+boot. The script resolves it by glob every time; do not hardcode it.
 
 ---
 
