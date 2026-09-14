@@ -427,6 +427,24 @@ for dev in /sys/bus/hid/devices/*05AC:8600*; do
     echo "could not bind $id to apple-ibridge-hid" >&2
   fi
 done
+
+# --- 3. fnmode permissions -------------------------------------------------
+# apple-ib-tb creates the fnmode attribute when its platform device probes,
+# which happens AFTER the HID bind above. A udev rule on the hid device
+# therefore fires too early: the attribute does not exist yet, the chgrp
+# fails silently, and fnmode comes back root-owned on every boot. Doing it
+# here, once the driver is actually up, is the only reliable point.
+# Group "video" (not "input"): membership of "input" would grant read access
+# to every evdev node on the machine. touchbar-fnmode.sh expects this group.
+for _ in 1 2 3 4 5; do
+  fn=$(echo /sys/bus/hid/devices/*05AC:8600*/fnmode)
+  [[ -e $fn ]] && break
+  sleep 1
+done
+if [[ -e $fn ]]; then
+  chgrp video "$fn" 2>/dev/null && chmod 0664 "$fn" 2>/dev/null \
+    && echo "fnmode is group-writable by video"
+fi
 exit 0
 HELPER
   chmod 0755 /usr/local/bin/apple-ibridge-handover

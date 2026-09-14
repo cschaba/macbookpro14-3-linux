@@ -551,7 +551,8 @@ which carries `SND_PCI_QUIRK(0x106b, 0x3900, "MacBookPro 14,3", CS8409_MBP143)`.
 If the card is still on a surround profile afterwards:
 ```bash
 pactl set-card-profile alsa_card.pci-0000_00_1f.3 output:analog-stereo+input:analog-stereo
-amixer -c 0 sset 'Mic' cap     # headset mic capture switch ships off
+cs=$(aplay -l | awk -F'[ :]' '/CS8409/{print $2; exit}')   # index is not stable
+amixer -c "$cs" sset 'Mic' cap     # headset mic capture switch ships off
 ```
 
 `apple-t2-audio-config` was **not** the cause — its UCM profiles only match a card
@@ -559,40 +560,55 @@ named `AppleT2x2/x4/x6`, and this card is `HDA-Intel` / `PCH` on the ACP path.
 
 ---
 
-### Third gotcha: the hardware gain stage is not the volume slider
+### Third gotcha: the quiet audio is WirePlumber, and it comes back
 
 Symptom: audio works, nothing is muted, the desktop volume control goes to
 100% — and it is still far too quiet. It reads like a limiter. It is not.
 
 ```bash
-amixer -c 1 sget PCM
+cs=$(aplay -l | awk -F'[ :]' '/CS8409/{print $2; exit}')
+amixer -c "$cs" sget PCM
 #   75 [29%] [-36.00dB]      <- hardware playback stage, near the bottom
 pactl get-sink-volume @DEFAULT_SINK@
 #   85% / -4.24 dB           <- what the desktop thinks
 ```
 
-**PipeWire's slider does not drive this control on this driver.** Verify it
-yourself — move PipeWire and watch ALSA stay put:
+**WirePlumber drives this control, and re-applies it at every boot.** That is
+the whole story, and an earlier version of this runbook had it backwards.
+
+Verify on your own machine — move the *sink* and watch the hardware follow:
 
 ```bash
-pactl set-sink-volume @DEFAULT_SINK@ 60%;  amixer -c 1 sget PCM | grep -o '\[[0-9]*%\]'
-pactl set-sink-volume @DEFAULT_SINK@ 100%; amixer -c 1 sget PCM | grep -o '\[[0-9]*%\]'
-# unchanged at 29% both times
+cs=$(aplay -l | awk -F'[ :]' '/CS8409/{print $2; exit}')   # never hardcode the index
+wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.05; sleep 2; amixer -c "$cs" sget PCM | tail -2 | head -1
+wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.50; sleep 2; amixer -c "$cs" sget PCM | tail -2 | head -1
 ```
 
-So PipeWire applies software attenuation on top of a hardware stage cutting
-**−36 dB** — roughly 63× in amplitude. No amount of sliding recovers it.
+Measured here:
 
-Fix the hardware stage once, then use PipeWire normally:
+| sink volume | hardware PCM |
+|---|---|
+| 5 % | `0 [0%] [-51.00dB]` |
+| 50 % | `165 [65%] [-18.00dB]` |
+| 65 % | `199 [78%] [-11.20dB]` |
+
+So the fix is to raise the sink, and let WirePlumber persist it:
 
 ```bash
-amixer -c 1 sset PCM 90%     # 0 dB is 100%; find the highest that stays clean
-sudo alsactl store           # persist via alsa-restore.service
+wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.65
 ```
 
-> Lower PipeWire first. Going from −36 dB to 0 dB is a very large jump, and
-> these are small speakers — full output distorts on bass and is not kind to
-> them. Check headphones separately; that path may want a different level.
+It stores the value in `~/.local/state/wireplumber/default-routes` as a cubed
+number (0.65³ = 0.274617) and re-applies it on every boot.
+
+**Do not use `amixer sset PCM` with `alsactl store`.** It looks like it works —
+the level changes, `asound.state` really does record 204 — and then WirePlumber
+overwrites it during the next startup. This cost a reboot to discover: after a
+kernel update the gain was back at `8 [-49.40dB]` while `asound.state` still
+said `204`.
+
+> Small speakers: full output distorts on bass. Check headphones separately;
+> that path may want a different level.
 
 `fix-audio-cs8409.sh --verify` reports this gain and flags it when it is below
 −20 dB.
@@ -744,7 +760,7 @@ grep -m1 "config found at" /run/user/1000/hypr/*/hyprland.log
 hyprctl getoption input:touchpad:disable_while_typing
 
 # audio
-aplay -l; amixer -c 0 scontrols
+aplay -l; amixer -c "$(aplay -l | awk -F'[ :]' '/CS8409/{print $2; exit}')" scontrols
 pactl list cards | grep -A2 'Active Profile'
 cat ~/.local/state/wireplumber/default-profile
 
@@ -839,15 +855,25 @@ the DKMS one both exist on disk.
 **5. Card 0 is not the analog card.** On this machine `card 0` is the ATI HDMI
 codec and `card 1` is the Cirrus CS8409:
 
+On 2026-09-02 the order was:
+
 ```
 0 [HDMI]: HDA-Intel - HDA ATI HDMI
 1 [PCH ]: HDA-Intel - HDA Intel PCH      <- CS8409/CS42L83 Analog
 ```
 
-`amixer -c 0` therefore returns the HDMI card's IEC958 (S/PDIF) controls and
-makes a perfectly working analog card look dead. Likewise `pactl list cards |
-grep -A1 'Active Profile' | head -1` returns the HDMI card's profile, which is
-correctly `off`. Resolve the card by codec name:
+After the 7.2.4 kernel update on 2026-09-14 it had **flipped**:
+
+```
+0 [PCH ]: HDA-Intel - HDA Intel PCH      <- CS8409/CS42L83 Analog
+1 [HDMI]: HDA-Intel - HDA ATI HDMI
+```
+
+So a hardcoded `amixer -c 0` returned the HDMI card's IEC958 (S/PDIF) controls
+one week and the analog card the next, making a perfectly working card look
+dead in the first case. Likewise `pactl list cards | grep -A1 'Active Profile' |
+head -1` returns whichever card happens to be first. Resolve by codec name,
+always:
 
 ```bash
 for f in /proc/asound/card*/codec#*; do

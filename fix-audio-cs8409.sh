@@ -106,8 +106,12 @@ report_state() {
       db=$(printf '%s' "$pcm" | sed -n 's/.*\[\(-\?[0-9.]*\)dB\].*/\1/p')
       if [[ -n "$db" ]] && awk -v d="$db" 'BEGIN{exit !(d < -20)}'; then
         echo "                       ^ well below 0 dB - this is why it sounds quiet."
-        echo "                         raise it:  amixer -c $cs_card sset PCM 90%"
-        echo "                         persist:   sudo alsactl store"
+        echo "                         WirePlumber owns this control. Raise the SINK,"
+        echo "                         not the mixer:"
+        echo "                           wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.65"
+        echo "                         Do NOT use 'amixer sset PCM' + 'alsactl store':"
+        echo "                         WirePlumber re-applies its own stored route"
+        echo "                         volume at every boot and overwrites it."
       fi
     fi
   fi
@@ -209,13 +213,17 @@ echo "You should see Master / Speaker / Headphone controls appear. If the card i
 echo "still on a surround profile:"
 echo "  pactl set-card-profile alsa_card.pci-0000_00_1f.3 output:analog-stereo+input:analog-stereo"
 echo
-echo "If sound works but is far too quiet, the hardware gain stage is the cause, not
-a limiter. PipeWire's slider does not drive it on this driver:
-  amixer -c 1 sset PCM 90%     # then find the highest level that stays clean
-  sudo alsactl store           # persist across reboots
+echo "If sound works but is far too quiet, raise the SINK -- WirePlumber drives the
+CS8409's hardware PCM stage and re-applies its own value at every boot:
+  wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.65
 
-The headset-mic capture switch ships off; enable it if you use one:"
-echo "  amixer -c 0 sset 'Mic' cap"
+Do NOT use 'amixer sset PCM' with 'alsactl store'. It appears to work and then
+WirePlumber silently overwrites it on the next boot.
+
+The headset-mic capture switch ships off; enable it if you use one (resolve the
+card by name -- the ALSA index is not stable, it flipped on a kernel update):"
+echo "  cs=\$(aplay -l | awk -F'[ :]' '/CS8409/{print \$2; exit}')"
+echo "  amixer -c \"\$cs\" sset 'Mic' cap"
 echo
 echo "WARNING from upstream: raw ALSA devices (hw:0,0 / plughw:0,0) have NO volume"
 echo "control and play at full output. Test through PipeWire, not speaker-test on hw:0,0."

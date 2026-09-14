@@ -373,10 +373,18 @@ Documented in full in [RUNBOOK.md](RUNBOOK.md); the short version:
 - **`disable_while_typing` only suppresses touches that *begin* while typing.**
   A palm already resting keeps tracking. It is not a substitute for palm
   rejection.
-- **Audio can work but be far too quiet, and it is not a limiter.** The
-  CS8409's hardware playback stage can sit at −36 dB, and PipeWire's slider
-  does not drive it — so the desktop control tops out on an already-crushed
-  signal. Raise `amixer -c 1 sset PCM` and `alsactl store` it.
+- **Audio can work but be far too quiet, and WirePlumber is why.** The
+  CS8409's hardware `PCM` control is driven by the PipeWire sink volume, and
+  WirePlumber stores its own value in
+  `~/.local/state/wireplumber/default-routes` and re-applies it at every boot.
+  Measured on this machine: sink at 5% gives `PCM 0 [-51.00dB]`, 50% gives
+  `PCM 165 [-18.00dB]`, 65% gives `PCM 199 [-11.20dB]`.
+  So raise the **sink**, not the mixer:
+  `wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.65`.
+  Setting `amixer sset PCM` and running `alsactl store` appears to work and
+  then silently reverts on the next boot, because WirePlumber overwrites it.
+  (An earlier version of this README claimed the opposite -- that PipeWire did
+  not drive this control. It does; that was a bad test.)
 - **This touchpad reports no pressure axis**, so every `AttrPalmPressureThreshold`
   recipe online is a no-op. Only touch *size* works.
 
@@ -394,6 +402,26 @@ sudo ./fix-touchbar-t1.sh
 ```
 
 Audio does not need this — DKMS rebuilds the CS8409 driver automatically.
+
+**Verified checklist after an upgrade** (7.2.2 → 7.2.4 on 2026-09-14):
+
+```bash
+sudo ./fix-touchbar-t1.sh                       # Touch Bar + camera + ALS
+ls /dev/video0                                  # camera back
+cat /sys/bus/hid/devices/*05AC:8600*/fnmode     # driver bound
+wpctl get-volume @DEFAULT_AUDIO_SINK@           # see the audio note below
+systemctl --failed                              # should be empty
+```
+
+Two things that bit us on that upgrade and are worth checking rather than
+assuming:
+
+- **The ALSA card order flipped** — CS8409 went from card 1 to card 0. Nothing
+  broke, because every script here resolves the card by codec name. Anything of
+  yours with a hardcoded `-c 0` or `-c 1` will silently address the wrong card.
+- **Audio came back near-silent.** Not the driver — WirePlumber re-applying its
+  stored route volume. Fix the sink, not the mixer:
+  `wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.65`.
 
 And once your firmware is on the partition mounted at `/boot`: **never reformat
 it**, and make sure any reinstall preserves that partition or restores your
